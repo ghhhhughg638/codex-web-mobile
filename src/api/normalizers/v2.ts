@@ -5,7 +5,7 @@ import type {
   ThreadListResponse,
   UserInput,
 } from '../appServerDtos'
-import type { UiMessage, UiProjectGroup, UiThread } from '../../types/codex'
+import type { UiMediaResource, UiMessage, UiProjectGroup, UiThread } from '../../types/codex'
 
 function toIso(seconds: number): string {
   return new Date(seconds * 1000).toISOString()
@@ -21,6 +21,70 @@ function toRawPayload(value: unknown): string {
     return JSON.stringify(value, null, 2)
   } catch {
     return String(value)
+  }
+}
+
+function mediaKindForPath(value: string): UiMediaResource['kind'] | null {
+  const cleanValue = value.split(/[?#]/u)[0].toLowerCase()
+  if (/\.(?:png|jpe?g|gif|webp|bmp|svg|avif)$/u.test(cleanValue)) return 'image'
+  if (/\.(?:mp3|wav|ogg|oga|m4a|aac|flac|opus|weba)$/u.test(cleanValue)) return 'audio'
+  if (/\.(?:html?|xhtml)$/u.test(cleanValue)) return 'html'
+  return null
+}
+
+function mediaResourceForReference(reference: string): UiMediaResource | null {
+  const value = reference.trim().replace(/[),.;]+$/u, '')
+  if (!value) return null
+
+  if (/^data:image\//iu.test(value)) return { kind: 'image', url: value, label: 'Image' }
+  if (/^data:audio\//iu.test(value)) return { kind: 'audio', url: value, label: 'Audio' }
+  if (/^blob:/iu.test(value) || /^https?:\/\//iu.test(value)) {
+    const kind = mediaKindForPath(value)
+    return kind ? { kind, url: value, label: kind === 'image' ? 'Image' : kind === 'audio' ? 'Audio' : 'Open HTML' } : null
+  }
+
+  const pathValue = value.replace(/^file:\/\//iu, '')
+  const kind = mediaKindForPath(pathValue)
+  if (!kind || (!pathValue.startsWith('/') && !pathValue.startsWith('~/'))) return null
+  return {
+    kind,
+    url: `/api/files/preview?path=${encodeURIComponent(pathValue)}`,
+    label: pathValue.split('/').filter(Boolean).at(-1) || pathValue,
+    path: pathValue,
+  }
+}
+
+function extractMediaResources(text: string): UiMediaResource[] {
+  const candidates = new Set<string>()
+  const addMatches = (pattern: RegExp) => {
+    for (const match of text.matchAll(pattern)) {
+      const value = match[1] || match[0]
+      if (value) candidates.add(value)
+    }
+  }
+
+  addMatches(/(?:src|href)\s*=\s*["']([^"']+)["']/giu)
+  addMatches(/(?:https?:\/\/|data:(?:image|audio)\/)[^\s<>'"`\])]+/giu)
+  addMatches(/(?:^|[\s(`])((?:\/|~\/)[^\s<>'"`\])]+\.(?:png|jpe?g|gif|webp|bmp|svg|avif|mp3|wav|ogg|oga|m4a|aac|flac|opus|weba|html?|xhtml)(?:\?[^\s<>'"`\])]+)?)/gimu)
+
+  const resources: UiMediaResource[] = []
+  for (const candidate of candidates) {
+    const resource = mediaResourceForReference(candidate)
+    if (resource && !resources.some((item) => item.url === resource.url)) resources.push(resource)
+  }
+  return resources
+}
+
+function mediaResourceForLocalPath(path: string): UiMediaResource | null {
+  const resource = mediaResourceForReference(path)
+  if (resource) return resource
+  const kind = mediaKindForPath(path)
+  if (!kind) return null
+  return {
+    kind,
+    url: `/api/files/preview?path=${encodeURIComponent(path)}`,
+    label: path.split('/').filter(Boolean).at(-1) || path,
+    path,
   }
 }
 
@@ -43,11 +107,12 @@ function extractCodexUserRequestText(value: string): string {
 function parseUserMessageContent(
   itemId: string,
   content: UserInput[] | undefined,
-): { text: string; images: string[]; attachments: Array<{ type: 'mention' | 'localImage'; path: string; name: string }>; rawBlocks: UiMessage[] } {
-  if (!Array.isArray(content)) return { text: '', images: [], attachments: [], rawBlocks: [] }
+): { text: string; images: string[]; media: UiMediaResource[]; attachments: Array<{ type: 'mention' | 'localImage'; path: string; name: string }>; rawBlocks: UiMessage[] } {
+  if (!Array.isArray(content)) return { text: '', images: [], media: [], attachments: [], rawBlocks: [] }
 
   const textChunks: string[] = []
   const images: string[] = []
+  const media: UiMediaResource[] = []
   const rawBlocks: UiMessage[] = []
   const attachments: Array<{ type: 'mention' | 'localImage'; path: string; name: string }> = []
 
@@ -61,6 +126,7 @@ function parseUserMessageContent(
     if (block.type === 'localImage' && typeof block.path === 'string' && block.path.trim()) {
       const path = block.path.trim()
       images.push(`/api/files/preview?path=${encodeURIComponent(path)}`)
+      media.push({ kind: 'image', url: `/api/files/preview?path=${encodeURIComponent(path)}`, label: path.split('/').filter(Boolean).at(-1) || path, path })
       attachments.push({ type: 'localImage', path, name: path.split('/').filter(Boolean).at(-1) || path })
     }
     if (block.type === 'mention' && typeof block.path === 'string' && block.path.trim()) {
@@ -83,6 +149,7 @@ function parseUserMessageContent(
   return {
     text: extractCodexUserRequestText(textChunks.join('\n')),
     images,
+    media,
     attachments,
     rawBlocks,
   }
@@ -90,11 +157,13 @@ function parseUserMessageContent(
 
 function toUiMessages(item: ThreadItem): UiMessage[] {
   if (item.type === 'agentMessage') {
+    const media = extractMediaResources(item.text)
     return [
       {
         id: item.id,
         role: 'assistant',
         text: item.text,
+        media,
         messageType: item.type,
       },
     ]
@@ -111,6 +180,7 @@ function toUiMessages(item: ThreadItem): UiMessage[] {
         role: 'user',
         text: parsed.text,
         images: parsed.images,
+        media: parsed.media,
         attachments: parsed.attachments,
         messageType: item.type,
       })
@@ -122,6 +192,11 @@ function toUiMessages(item: ThreadItem): UiMessage[] {
     }
 
     return messages
+  }
+
+  if (item.type === 'imageView') {
+    const media = mediaResourceForLocalPath(item.path)
+    return media ? [{ id: item.id, role: 'assistant', text: '', media: [media], messageType: item.type, rawPayload: toRawPayload(item) }] : []
   }
 
   if (item.type === 'reasoning') {

@@ -16,7 +16,8 @@ import {
   setSkillEnabled,
   validateConfig,
 } from './localManagement.js'
-import { listDirectory, readBinaryFile, readTextFile, uploadFile } from './fileManagement.js'
+import { createDirectory, deletePath, listDirectory, readBinaryFile, readTextFile, renamePath, uploadFile, writeTextFile } from './fileManagement.js'
+import { checkForUpdate, installLatestFromGitHub } from './updateManagement.js'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const distDir = join(__dirname, '..', 'dist')
@@ -45,6 +46,16 @@ export function createServer(options: ServerOptions = {}): ServerInstance {
   app.use(bridge)
   app.use(express.json({ limit: '25mb' }))
 
+  app.get('/api/update/check', async (_req, res) => {
+    try { res.json(await checkForUpdate()) }
+    catch (error) { res.status(502).json({ error: error instanceof Error ? error.message : 'Update check failed' }) }
+  })
+
+  app.post('/api/update/apply', async (_req, res) => {
+    try { res.json({ ok: true, ...await installLatestFromGitHub() }) }
+    catch (error) { res.status(502).json({ error: error instanceof Error ? error.message : 'Update install failed' }) }
+  })
+
   app.get('/api/files/list', async (req, res) => {
     try {
       res.json(await listDirectory(typeof req.query.path === 'string' ? req.query.path : ''))
@@ -59,6 +70,30 @@ export function createServer(options: ServerOptions = {}): ServerInstance {
     } catch (error) {
       res.status(400).json({ error: error instanceof Error ? error.message : 'Failed to read file' })
     }
+  })
+
+  app.put('/api/files/write', async (req, res) => {
+    try {
+      const path = typeof req.body?.path === 'string' ? req.body.path : ''
+      const content = typeof req.body?.content === 'string' ? req.body.content : ''
+      res.json(await writeTextFile(path, content))
+    } catch (error) { res.status(400).json({ error: error instanceof Error ? error.message : 'Failed to write file' }) }
+  })
+
+  app.post('/api/files/rename', async (req, res) => {
+    try {
+      res.json(await renamePath(typeof req.body?.path === 'string' ? req.body.path : '', typeof req.body?.name === 'string' ? req.body.name : ''))
+    } catch (error) { res.status(400).json({ error: error instanceof Error ? error.message : 'Failed to rename path' }) }
+  })
+
+  app.delete('/api/files/path', async (req, res) => {
+    try { res.json(await deletePath(typeof req.query.path === 'string' ? req.query.path : '')) }
+    catch (error) { res.status(400).json({ error: error instanceof Error ? error.message : 'Failed to delete path' }) }
+  })
+
+  app.post('/api/files/mkdir', async (req, res) => {
+    try { res.json(await createDirectory(typeof req.body?.directory === 'string' ? req.body.directory : '', typeof req.body?.name === 'string' ? req.body.name : '')) }
+    catch (error) { res.status(400).json({ error: error instanceof Error ? error.message : 'Failed to create directory' }) }
   })
 
   app.get('/api/files/preview', async (req, res) => {

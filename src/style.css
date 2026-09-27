@@ -215,6 +215,21 @@ button:not(:disabled):active { transform: translateY(1px) scale(.985); }
 .browser-frame-status { position: absolute; z-index: 1; top: 12px; left: 12px; display: inline-flex; align-items: center; gap: 7px; padding: 7px 9px; border: 1px solid #d8e4e6; border-radius: 8px; color: #5c7479; background: rgba(255, 255, 255, .92); font-size: 11px; box-shadow: 0 4px 12px rgba(30, 55, 60, .1); }
 .browser-frame-footer { display: flex; min-height: 38px; align-items: center; justify-content: space-between; gap: 10px; padding: 6px 10px; border-top: 1px solid #e4ebec; color: #78898e; background: #f8fbfb; font-size: 10px; }
 .browser-empty { display: grid; min-height: 300px; place-items: center; border: 1px dashed #cbd5dc; border-radius: 11px; color: #7b8995; background: #fff; }
+.file-manager-toolbar { display: grid; grid-template-columns: minmax(0, 1fr) auto auto auto; gap: 8px; max-width: 980px; margin-bottom: 8px; }
+.file-manager-path { max-width: 980px; overflow: hidden; margin: 0 0 10px; color: #8794a0; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+.file-manager-layout { display: grid; grid-template-columns: minmax(250px, .85fr) minmax(0, 1.15fr); gap: 12px; max-width: 980px; min-height: 480px; }
+.file-manager-list, .file-manager-editor { min-width: 0; overflow: auto; border: 1px solid var(--ui-line, #dfe5eb); border-radius: 11px; background: var(--ui-surface, #fff); }
+.file-manager-entry { display: grid; width: 100%; min-height: 42px; grid-template-columns: 42px minmax(0, 1fr) 60px 22px 22px; gap: 7px; align-items: center; padding: 7px 9px; border: 0; border-bottom: 1px solid var(--ui-line, #edf0f2); color: var(--ui-text, #344654); background: transparent; text-align: left; }
+.file-manager-entry:hover { background: var(--ui-hover, #f2f8fa); }
+.file-manager-entry span { color: var(--ui-accent, #2f7884); font-size: 9px; font-weight: 800; }
+.file-manager-entry strong { overflow: hidden; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+.file-manager-entry small { color: var(--ui-text-faint, #84919c); font-size: 10px; text-align: right; }
+.file-manager-entry b { display: grid; width: 20px; height: 20px; place-items: center; border-radius: 5px; color: var(--ui-text-faint, #81939a); font-size: 13px; }
+.file-manager-entry b:hover { color: var(--ui-accent, #1d7482); background: var(--ui-accent-soft, #edf6f7); }
+.file-manager-editor { display: flex; flex-direction: column; }
+.file-manager-editor .editor-toolbar { padding: 9px; border-bottom: 1px solid var(--ui-line, #edf0f2); }
+.file-manager-textarea { flex: 1; min-height: 0; border: 0; border-radius: 0; }
+.file-manager-textarea .n-input__textarea-el { min-height: 440px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; line-height: 1.55; }
 .command-backdrop { position: fixed; inset: 0; display: flex; align-items: flex-start; justify-content: center; padding: 12vh 16px 16px; background: rgba(20, 35, 48, .3); z-index: 80; }
 .prompt-description { margin: 0 0 10px; color: #667781; font-size: 13px; line-height: 1.5; }
 .prompt-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
@@ -267,9 +282,11 @@ button:not(:disabled):active { transform: translateY(1px) scale(.985); }
 .model-orbit { display: grid; width: 33px; height: 33px; place-items: center; border-radius: 10px; color: #4d777c; background: #e7f1f1; font-size: 18px; }
 .model-summary > div { display: grid; gap: 3px; min-width: 0; }
 
-.activity-dock { position: fixed; z-index: 25; right: max(12px, env(safe-area-inset-right)); bottom: calc(146px + env(safe-area-inset-bottom)); display: flex; flex-direction: column; align-items: flex-end; gap: 8px; pointer-events: none; }
+.activity-dock { position: fixed; z-index: 25; top: 58px; right: 0; bottom: 0; width: 0; pointer-events: none; }
 .activity-dock > * { pointer-events: auto; }
-.activity-dock-trigger { display: grid; width: min(300px, calc(100vw - 24px)); min-height: 46px; grid-template-columns: 20px minmax(0, 1fr) auto; align-items: center; gap: 9px; padding: 7px 11px; border: 1px solid #29444a; border-radius: 11px; color: #f6fbfa; background: #20383d; box-shadow: 0 8px 26px rgba(20, 38, 43, .22); text-align: left; transition: transform .16s ease, background .16s ease, box-shadow .16s ease; }
+.activity-dock-trigger { position: absolute; top: 50%; right: 0; display: grid; width: 42px; min-height: 124px; grid-template-columns: 1fr; align-content: center; justify-items: center; gap: 7px; padding: 10px 6px; border: 1px solid #29444a; border-right: 0; border-radius: 11px 0 0 11px; color: #f6fbfa; background: #20383d; box-shadow: 0 8px 26px rgba(20, 38, 43, .22); text-align: left; transform: translateY(-50%); transition: right .18s ease, background .16s ease, box-shadow .16s ease; }
+.activity-dock-trigger .activity-trigger-copy, .activity-dock-trigger time { display: none; }
+.activity-dock.is-open .activity-dock-trigger { right: min(390px, calc(100vw - 16px)); }
 .activity-dock-trigger:hover { transform: translateY(-1px); background: #29474c; box-shadow: 0 10px 28px rgba(20, 38, 43, .27); }
 .activity-trigger-mark, .activity-state-mark { display: grid; width: 19px; height: 19px; place-items: center; color: #75c6b0; }
 .activity-trigger-mark svg, .activity-state-mark svg, .activity-event-mark svg, .activity-close svg { width: 100%; height: 100%; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
@@ -278,7 +295,7 @@ button:not(:disabled):active { transform: translateY(1px) scale(.985); }
 .activity-trigger-copy strong { overflow: hidden; font-size: 11px; line-height: 1.25; text-overflow: ellipsis; white-space: nowrap; }
 .activity-trigger-copy small { overflow: hidden; color: #b6c9c9; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }
 .activity-dock-trigger time { color: #c8d7d7; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 9px; white-space: nowrap; }
-.activity-panel { display: flex; width: min(390px, calc(100vw - 24px)); max-height: min(57dvh, 540px); flex-direction: column; overflow: hidden; border: 1px solid #d8e1e3; border-radius: 12px; color: #25373c; background: #fff; box-shadow: 0 16px 46px rgba(19, 39, 43, .22); transform-origin: bottom right; }
+.activity-panel { position: absolute; top: 0; right: 0; display: flex; width: min(390px, calc(100vw - 16px)); height: 100%; max-height: none; flex-direction: column; overflow: hidden; border: 1px solid #d8e1e3; border-right: 0; border-radius: 12px 0 0 12px; color: #25373c; background: #fff; box-shadow: 0 16px 46px rgba(19, 39, 43, .22); transform-origin: right center; }
 .activity-panel-header { display: flex; min-height: 57px; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 12px; border-bottom: 1px solid #e5ebeb; background: #f8fbfa; }
 .activity-panel-heading { display: flex; min-width: 0; align-items: center; gap: 9px; }
 .activity-state-mark { width: 21px; height: 21px; }
@@ -421,13 +438,11 @@ button:not(:disabled):active { transform: translateY(1px) scale(.985); }
   .activity-trigger-mark.is-running svg, .activity-state-mark.is-running svg, .activity-event-list li[data-status="running"] .activity-event-mark svg { animation: none; }
 }
 
-@media (min-width: 980px) {
-  .activity-dock { right: 296px; bottom: 18px; }
-}
-
-@media (max-height: 660px) {
-  .activity-dock { bottom: calc(116px + env(safe-area-inset-bottom)); }
-  .activity-panel { max-height: 50dvh; }
+@media (max-width: 600px) {
+  .file-manager-toolbar { grid-template-columns: 1fr 1fr; }
+  .file-manager-toolbar .field-control { grid-column: 1 / -1; }
+  .file-manager-layout { grid-template-columns: 1fr; min-height: 0; }
+  .file-manager-editor { min-height: 360px; }
 }
 
 /* Theme tokens are shared by the app shell, custom menus and Naive UI portals. */

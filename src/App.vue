@@ -27,6 +27,7 @@
         <button :class="['nav-item', { active: view === 'skills' }]" type="button" @click="openView('skills')"><span class="nav-icon">✦</span>{{ t('app.skills') }}</button>
         <button :class="['nav-item', { active: view === 'integrations' }]" type="button" @click="openView('integrations')"><span class="nav-icon">⌘</span>{{ t('app.integrations') }}</button>
         <button :class="['nav-item', { active: view === 'browser' }]" type="button" @click="openView('browser')"><span class="nav-icon">◎</span>{{ t('app.browser') }}</button>
+        <button :class="['nav-item', { active: view === 'files' }]" type="button" @click="openView('files')"><span class="nav-icon">▣</span>{{ t('app.files') }}</button>
         <button :class="['nav-item', { active: view === 'settings' }]" type="button" @click="openView('settings')"><span class="nav-icon">⚙</span>{{ t('app.settings') }}</button>
       </nav>
       <div v-if="view === 'chat'" class="thread-list">
@@ -140,7 +141,7 @@
         <p v-if="integrationMessage" class="status-message">{{ integrationMessage }}</p><p v-if="integrationError" class="error-banner">{{ integrationError }}</p>
       </section>
 
-      <section v-else class="management-stage browser-stage">
+      <section v-else-if="view === 'browser'" class="management-stage browser-stage">
         <div class="page-heading"><div class="eyebrow">{{ t('browser.eyebrow') }}</div><h1>{{ t('browser.title') }}</h1><p>{{ t('browser.subtitle') }}</p></div>
         <form class="browser-toolbar" @submit.prevent="openBrowserUrl"><n-input v-model:value="browserUrl" inputmode="url" :placeholder="t('browser.placeholder')" /><n-button type="primary" attr-type="submit">{{ t('browser.open') }}</n-button></form>
         <div v-if="browserUrl" class="browser-frame-shell">
@@ -150,6 +151,8 @@
         </div>
         <div v-else class="browser-empty">{{ t('browser.empty') }}</div>
       </section>
+
+      <FileManager v-else />
     </main>
 
     <ActivityDock v-if="view === 'chat' && !isHomeRoute && (selectedThreadActivityEvents.length > 0 || liveOverlay || isSelectedThreadInProgress)" :events="selectedThreadActivityEvents" :live-overlay="liveOverlay" :is-working="isSelectedThreadInProgress" />
@@ -181,12 +184,13 @@ import AppMenu from './components/ui/AppMenu.vue'
 import LocaleMenu from './components/ui/LocaleMenu.vue'
 import AppearanceMenu from './components/ui/AppearanceMenu.vue'
 import SidebarThreadTree from './components/sidebar/SidebarThreadTree.vue'
+import FileManager from './components/content/FileManager.vue'
 import { useDesktopState } from './composables/useDesktopState'
 import { getSkillContent } from './api/localManagement'
 import { useLocale } from './composables/useLocale'
 import type { ReasoningEffort, ThreadScrollState, UiFileAttachment } from './types/codex'
 
-type ViewName = 'chat' | 'skills' | 'settings' | 'integrations' | 'browser'
+type ViewName = 'chat' | 'skills' | 'settings' | 'integrations' | 'browser' | 'files'
 type SettingsTab = 'connection' | 'balance' | 'runtime' | 'toml'
 type Skill = { id: string; name: string; description: string; path: string; enabled: boolean; updatedAt: string }
 type ConfigResponse = { path: string; config: Record<string, any>; raw: string; revealed: boolean; authPath?: string; hasApiKey?: boolean; apiKeySource?: string }
@@ -225,6 +229,7 @@ const sessionMode = ref<'default' | 'plan'>('default')
 const composerSeed = ref('')
 const browserUrl = ref('')
 const browserFrameLoading = ref(false)
+const updateState = reactive({ checked: false, checking: false, available: false, current: '', latest: '', error: '', installing: false, message: '' })
 const settingsTab = ref<SettingsTab>('connection')
 const balanceError = ref('')
 const currentBalance = ref<BalanceQueryResult | null>(null)
@@ -262,7 +267,7 @@ let promptResolver: ((value: string | null) => void) | null = null
 const routeThreadId = computed(() => typeof route.params.threadId === 'string' ? route.params.threadId : '')
 const isHomeRoute = computed(() => route.name === 'home')
 const contentTitle = computed(() => isHomeRoute.value ? t('app.newThread') : selectedThread.value?.title || t('app.thread'))
-const viewTitle = computed(() => view.value === 'chat' ? (isHomeRoute.value ? t('app.newThread') : contentTitle.value) : view.value === 'skills' ? t('app.skills') : view.value === 'integrations' ? t('app.integrations') : view.value === 'browser' ? t('app.browser') : t('app.settings'))
+const viewTitle = computed(() => view.value === 'chat' ? (isHomeRoute.value ? t('app.newThread') : contentTitle.value) : view.value === 'skills' ? t('app.skills') : view.value === 'integrations' ? t('app.integrations') : view.value === 'browser' ? t('app.browser') : view.value === 'files' ? t('app.files') : t('app.settings'))
 const liveOverlay = computed(() => selectedLiveOverlay.value)
 const composerThreadContextId = computed(() => isHomeRoute.value ? '__new-thread__' : selectedThreadId.value)
 const isSelectedThreadInProgress = computed(() => !isHomeRoute.value && selectedThread.value?.inProgress === true)
@@ -318,7 +323,7 @@ const commands = computed(() => [
 ])
 const filteredCommands = computed(() => commands.value.filter((command) => `${command.label} ${command.description}`.toLowerCase().includes(commandQuery.value.toLowerCase())))
 
-onMounted(async () => { setViewFromRoute(); window.addEventListener('keydown', onGlobalKeydown); await refreshAll(); if (routeThreadId.value) await selectThread(routeThreadId.value); startPolling(); await loadConfig(); await loadCurrentBalance(); await loadRuntime(); await loadSkills(); await loadIntegrations() })
+onMounted(async () => { setViewFromRoute(); window.addEventListener('keydown', onGlobalKeydown); void checkForUpdates(true); await refreshAll(); if (routeThreadId.value) await selectThread(routeThreadId.value); startPolling(); await loadConfig(); await loadCurrentBalance(); await loadRuntime(); await loadSkills(); await loadIntegrations() })
 onUnmounted(() => { window.removeEventListener('keydown', onGlobalKeydown); stopPolling() })
 watch(routeThreadId, async (threadId) => { if (threadId && selectedThreadId.value !== threadId) await selectThread(threadId) })
 watch(() => route.name, () => { setViewFromRoute() })
@@ -333,7 +338,7 @@ watch(appearanceMode, (value) => {
 
 function routeNameForView(nextView: ViewName): string { return nextView === 'chat' ? (selectedThreadId.value ? 'thread' : 'home') : nextView }
 function setViewFromRoute(): void {
-  if (route.name === 'skills' || route.name === 'settings' || route.name === 'integrations' || route.name === 'browser') {
+  if (route.name === 'skills' || route.name === 'settings' || route.name === 'integrations' || route.name === 'browser' || route.name === 'files') {
     view.value = route.name
     if (route.name === 'settings') {
       const tab = typeof route.query.tab === 'string' ? route.query.tab : ''
@@ -396,6 +401,7 @@ function onStartNewThread(projectName: string): void { const group = projectGrou
 function onRenameProject(payload: { projectName: string; displayName: string }): void { renameProject(payload.projectName, payload.displayName) }
 async function onRemoveProject(projectName: string): Promise<void> { if (await askConfirm(t('sidebar.removeProjectConfirm'))) removeProject(projectName) }
 function onReorderProject(payload: { projectName: string; toIndex: number }): void { reorderProject(payload.projectName, payload.toIndex) }
+async function checkForUpdates(autoInstall: boolean): Promise<void> { if (updateState.checking) return; updateState.checking = true; updateState.error = ''; try { const result = await api<{ currentVersion: string; latestVersion: string; updateAvailable: boolean }>('/api/update/check'); updateState.checked = true; updateState.current = result.currentVersion; updateState.latest = result.latestVersion; updateState.available = result.updateAvailable; if (result.updateAvailable && autoInstall && !sessionStorage.getItem('codex-web-mobile.update-attempted')) { sessionStorage.setItem('codex-web-mobile.update-attempted', result.latestVersion); updateState.installing = true; message.info(`${t('update.available')} ${result.latestVersion}`); await api('/api/update/apply', { method: 'POST', body: '{}' }); updateState.message = t('update.installed'); message.success(t('update.installed')) } } catch (unknownError) { updateState.error = unknownError instanceof Error ? unknownError.message : t('update.checkFailed'); message.warning(t('update.checkFailed')) } finally { updateState.checking = false; updateState.installing = false } }
 async function onSubmitThreadMessage(text: string): Promise<void> { const attachments = [...attachedFiles.value]; try { if (isHomeRoute.value) await submitFirstMessage(text, attachments); else await sendMessageToSelectedThread(sessionMode.value === 'plan' ? '[Plan mode]\n' + text : text, attachments); attachedFiles.value = [] } catch { attachedFiles.value = attachments; composerSeed.value = text } }
 async function onGuideMessage(text: string): Promise<void> { const attachments = [...attachedFiles.value]; attachedFiles.value = []; const accepted = await steerSelectedThreadTurn(text, attachments); if (!accepted) { attachedFiles.value = attachments; composerSeed.value = text } }
 async function onInterruptAndSendMessage(text: string): Promise<void> { const attachments = [...attachedFiles.value]; attachedFiles.value = []; const accepted = await interruptAndSendToSelectedThread(text, attachments); if (!accepted) { attachedFiles.value = attachments; composerSeed.value = text } }

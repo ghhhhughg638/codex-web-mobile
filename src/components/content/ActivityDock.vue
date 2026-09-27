@@ -1,5 +1,5 @@
 <template>
-  <aside class="activity-dock" aria-live="polite">
+  <aside :class="['activity-dock', { 'is-open': isOpen }]" aria-live="polite">
     <Transition name="activity-panel-pop">
       <section v-if="isOpen" id="activity-panel" class="activity-panel" :aria-label="t('activity.title')">
         <header class="activity-panel-header">

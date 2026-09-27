@@ -21,6 +21,7 @@ const router = createRouter({
     { path: '/settings', name: 'settings', component: EmptyRouteView },
     { path: '/integrations', name: 'integrations', component: EmptyRouteView },
     { path: '/browser', name: 'browser', component: EmptyRouteView },
+    { path: '/files', name: 'files', component: EmptyRouteView },
     {
       path: '/new-thread',
       redirect: { name: 'home' },

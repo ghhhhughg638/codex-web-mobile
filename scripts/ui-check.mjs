@@ -118,7 +118,7 @@ try {
     if (!/[\u4e00-\u9fff]/u.test(chineseHeading)) throw new Error(`${viewport.name} language toggle did not render Chinese: ${chineseHeading}`)
     await capture(`${viewport.name}-zh`, `${viewport.name} Chinese home`)
 
-    for (const [index, viewName, expectedHeading] of [[4, 'settings', '设置'], [1, 'skills', '技能'], [2, 'integrations', '插件与 MCP']]) {
+    for (const [index, viewName, expectedHeading] of [[5, 'settings', '设置'], [1, 'skills', '技能'], [2, 'integrations', '插件与 MCP']]) {
       await evaluate(`document.querySelectorAll('.nav-item')[${index}]?.click()`)
       await sleep(250)
       const heading = await evaluate(`document.querySelector('.management-stage h1')?.textContent?.trim() || ''`)

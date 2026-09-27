@@ -88,10 +88,18 @@ export type UiMessage = {
   role: 'user' | 'assistant' | 'system'
   text: string
   images?: string[]
+  media?: UiMediaResource[]
   attachments?: UiFileAttachment[]
   messageType?: string
   rawPayload?: string
   isUnhandled?: boolean
+}
+
+export type UiMediaResource = {
+  kind: 'image' | 'audio' | 'html' | 'file'
+  url: string
+  label: string
+  path?: string
 }
 
 export type UiServerRequest = {

@@ -100,15 +100,20 @@
         <div class="message-row" :data-role="message.role" :data-message-type="message.messageType || ''">
           <div class="message-stack" :data-role="message.role">
             <article class="message-body" :data-role="message.role">
-              <ul
-                v-if="message.images && message.images.length > 0"
-                class="message-image-list"
-                :data-role="message.role"
-              >
-                <li v-for="imageUrl in message.images" :key="imageUrl" class="message-image-item">
-                  <button class="message-image-button" type="button" @click="openImageModal(imageUrl)">
-                    <img class="message-image-preview" :src="imageUrl" :alt="t('request.previewImage')" loading="lazy" />
+              <ul v-if="displayMedia(message).length > 0" class="message-media-list" :data-role="message.role">
+                <li v-for="media in displayMedia(message)" :key="`${media.kind}:${media.url}`" class="message-media-item">
+                  <button v-if="media.kind === 'image'" class="message-image-button" type="button" @click="openImageModal(media.url)">
+                    <img class="message-image-preview" :src="media.url" :alt="media.label || t('request.previewImage')" loading="lazy" @error="onMediaError" />
                   </button>
+                  <div v-else-if="media.kind === 'audio'" class="message-audio-card">
+                    <strong>{{ media.label || t('files.audio') }}</strong>
+                    <audio class="message-audio" controls preload="metadata" :src="media.url" @error="onMediaError" />
+                  </div>
+                  <a v-else class="message-resource-link" :href="media.url" target="_blank" rel="noopener noreferrer">
+                    <span class="message-resource-icon">{{ media.kind === 'html' ? 'HTML' : 'FILE' }}</span>
+                    <span><strong>{{ media.label || t('files.openFile') }}</strong><small>{{ t('files.openInNewTab') }}</small></span>
+                    <b>↗</b>
+                  </a>
                 </li>
               </ul>
 
@@ -121,6 +126,13 @@
               </div>
 
               <article v-if="message.text.length > 0" class="message-card" :data-role="message.role">
+                <div v-if="extractHtmlDocument(message.text)" class="message-html-action">
+                  <button type="button" class="message-resource-link" @click="openHtmlDocument(extractHtmlDocument(message.text))">
+                    <span class="message-resource-icon">HTML</span>
+                    <span><strong>{{ t('files.openHtml') }}</strong><small>{{ t('files.openInNewTab') }}</small></span>
+                    <b>↗</b>
+                  </button>
+                </div>
                 <div v-if="message.messageType === 'worked'" class="worked-separator" aria-live="polite">
                   <span class="worked-separator-line" aria-hidden="true" />
                   <p class="worked-separator-text">{{ message.text }}</p>
@@ -181,7 +193,7 @@
 import { nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import DOMPurify from 'dompurify'
 import { marked } from 'marked'
-import type { ThreadScrollState, UiFileAttachment, UiLiveOverlay, UiMessage, UiServerRequest } from '../../types/codex'
+import type { ThreadScrollState, UiFileAttachment, UiLiveOverlay, UiMediaResource, UiMessage, UiServerRequest } from '../../types/codex'
 import IconTablerX from '../icons/IconTablerX.vue'
 import AppSelect from '../ui/AppSelect.vue'
 import { useLocale } from '../../composables/useLocale'
@@ -228,6 +240,15 @@ function renderMarkdown(value: string): string {
     button.append(icon, label)
     pre.prepend(button)
   }
+  for (const anchor of documentFragment.querySelectorAll<HTMLAnchorElement>('a[href]')) {
+    const href = anchor.getAttribute('href') || ''
+    anchor.target = '_blank'
+    anchor.rel = 'noopener noreferrer'
+    if (isLocalMediaReference(href)) {
+      const resource = mediaResourceForReference(href)
+      if (resource) anchor.href = resource.url
+    }
+  }
   return documentFragment.body.innerHTML
 }
 
@@ -266,6 +287,53 @@ type ParsedToolQuestion = {
 }
 
 const LONG_MESSAGE_CHAR_THRESHOLD = 1200
+
+function mediaKindForPath(value: string): UiMediaResource['kind'] | null {
+  const cleanValue = value.split(/[?#]/u)[0].toLowerCase()
+  if (/\.(?:png|jpe?g|gif|webp|bmp|svg|avif)$/u.test(cleanValue)) return 'image'
+  if (/\.(?:mp3|wav|ogg|oga|m4a|aac|flac|opus|weba)$/u.test(cleanValue)) return 'audio'
+  if (/\.(?:html?|xhtml)$/u.test(cleanValue)) return 'html'
+  return null
+}
+
+function isLocalMediaReference(value: string): boolean {
+  return Boolean(mediaKindForPath(value)) && (value.startsWith('/') || value.startsWith('~/') || value.startsWith('file://'))
+}
+
+function mediaResourceForReference(reference: string): UiMediaResource | null {
+  const value = reference.trim().replace(/[),.;]+$/u, '')
+  if (!value) return null
+  if (/^data:image\//iu.test(value)) return { kind: 'image', url: value, label: 'Image' }
+  if (/^data:audio\//iu.test(value)) return { kind: 'audio', url: value, label: 'Audio' }
+  const kind = mediaKindForPath(value)
+  if (!kind) return null
+  if (/^(?:https?:|blob:|data:)/iu.test(value)) return { kind, url: value, label: kind === 'html' ? t('files.openHtml') : kind === 'audio' ? t('files.audio') : t('files.openFile') }
+  const path = value.replace(/^file:\/\//iu, '')
+  return { kind, url: `/api/files/preview?path=${encodeURIComponent(path)}`, label: getBasename(path), path }
+}
+
+function displayMedia(message: UiMessage): UiMediaResource[] {
+  if (message.media && message.media.length > 0) return message.media
+  return (message.images || []).map((url) => ({ kind: 'image' as const, url, label: t('request.previewImage') }))
+}
+
+function extractHtmlDocument(value: string): string {
+  const fenced = value.match(/```html?\s*([\s\S]*?)```/iu)
+  if (fenced?.[1]?.trim()) return fenced[1].trim()
+  if (/^\s*(?:<!doctype\s+html|<html[\s>])/iu.test(value)) return value.trim()
+  return ''
+}
+
+function openHtmlDocument(value: string): void {
+  const blobUrl = URL.createObjectURL(new Blob([value], { type: 'text/html;charset=utf-8' }))
+  window.open(blobUrl, '_blank', 'noopener,noreferrer')
+  window.setTimeout(() => URL.revokeObjectURL(blobUrl), 60_000)
+}
+
+function onMediaError(event: Event): void {
+  const element = event.currentTarget
+  if (element instanceof HTMLElement) element.closest('.message-media-item')?.classList.add('is-broken')
+}
 
 function messageCharacterCount(value: string): number {
   return value.length
@@ -944,6 +1012,10 @@ onBeforeUnmount(() => {
   @apply list-none m-0 mb-2 p-0 flex flex-wrap gap-2;
 }
 
+.message-media-list { display: grid; gap: 8px; max-width: min(560px, 100%); margin: 0 0 8px; padding: 0; list-style: none; }
+.message-media-item { min-width: 0; }
+.message-media-item.is-broken { opacity: .55; }
+
 .message-image-list[data-role='user'] {
   @apply ml-auto justify-end;
 }
@@ -957,8 +1029,25 @@ onBeforeUnmount(() => {
 }
 
 .message-image-preview {
-  @apply block w-16 h-16 object-cover;
+  display: block;
+  width: auto;
+  max-width: min(560px, 100%);
+  max-height: 420px;
+  object-fit: contain;
 }
+
+.message-audio-card { display: grid; gap: 7px; max-width: min(560px, 100%); padding: 10px 12px; border: 1px solid #d8e4e8; border-radius: 9px; color: #36545d; background: #f6fafb; }
+.message-audio-card strong { overflow: hidden; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.message-audio { width: min(520px, 100%); max-width: 100%; }
+.message-resource-link { display: grid; width: min(560px, 100%); grid-template-columns: 42px minmax(0, 1fr) 18px; gap: 9px; align-items: center; padding: 9px 10px; border: 1px solid #d8e4e8; border-radius: 9px; color: #36545d; background: #f6fafb; text-decoration: none; text-align: left; }
+.message-resource-link:hover { border-color: #9fc5cc; background: #edf6f7; }
+.message-resource-link > span:nth-child(2) { display: grid; min-width: 0; gap: 2px; }
+.message-resource-link strong, .message-resource-link small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.message-resource-link strong { font-size: 11px; }
+.message-resource-link small { color: #87969d; font-size: 9px; }
+.message-resource-link b { color: #81939a; font-size: 12px; }
+.message-resource-icon { display: grid; width: 36px; height: 27px; place-items: center; border-radius: 5px; color: #2f7884; background: #dff0f2; font-size: 8px; font-weight: 800; }
+.message-html-action { margin-bottom: 8px; }
 
 .message-attachment-list { display: grid; gap: 6px; max-width: min(520px, 100%); margin: 7px 0 0; }
 .message-attachment { display: grid; grid-template-columns: 34px minmax(0, 1fr) 16px; gap: 8px; align-items: center; padding: 8px 9px; border: 1px solid #d8e4e8; border-radius: 8px; color: #36545d; background: #f6fafb; text-decoration: none; }

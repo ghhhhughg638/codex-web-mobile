@@ -37,6 +37,7 @@
     "build": "npm run build:frontend && npm run build:cli",
     "ui:check": "node scripts/ui-check.mjs",
     "preview": "vite preview",
+    "prepare": "npm run build",
     "prepublishOnly": "npm run build"
   },
   "dependencies": {
