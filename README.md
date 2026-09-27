@@ -1,5 +1,29 @@
 # `codex-web-mobile`
 
+一个面向 Termux 和手机浏览器的 Codex 本地 Web 工作台。它连接 Codex `app-server`，提供会话管理、模型切换、计划模式、推理强度、技能、插件、MCP、配置文件和本地文件上传等功能。
+
+适合希望用网页界面代替 CLI，同时仍让 Codex 在本机工作目录中执行任务的用户。
+
+## 中文简介
+
+- 支持 GPT 模型选择、推理强度切换和运行状态展示
+- 支持计划模式、`/` 命令补全、追加引导和停止后发送
+- 支持会话搜索、折叠、置顶、归档、重命名和并发任务查看
+- 支持技能管理、插件/MCP 状态、`config.toml` 和 `auth.json` 配置
+- 支持 Termux 文件浏览、文件上传、图片附件和本地统计
+- 支持中文/英文，以及 Codex、Comet、夜间工作台三种界面风格
+
+快速启动：
+
+```bash
+npm install -g codex-web-mobile
+codex-web-mobile
+```
+
+启动后终端会显示本地访问地址和登录密码。
+
+## English
+
 A mobile-first local workbench for [Codex](https://github.com/openai/codex). It runs on top of the Codex `app-server` and adds configuration, provider, runtime, skill, plugin, MCP and local file management.
 
 ## Prerequisites

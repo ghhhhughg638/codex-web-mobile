@@ -1,7 +1,7 @@
 {
   "name": "codex-web-mobile",
   "version": "0.1.0",
-  "description": "A lightweight web interface for Codex that runs on top of the Codex app-server, allowing remote access from any browser",
+  "description": "Codex 的本地移动端 Web 工作台，支持会话、模型、计划模式、技能、MCP、配置和文件管理",
   "type": "module",
   "license": "MIT",
   "author": "Pavel Voronin",
