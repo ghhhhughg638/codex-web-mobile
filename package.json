@@ -1,0 +1,64 @@
+{
+  "name": "codex-web-mobile",
+  "version": "0.1.0",
+  "description": "A lightweight web interface for Codex that runs on top of the Codex app-server, allowing remote access from any browser",
+  "type": "module",
+  "license": "MIT",
+  "author": "Pavel Voronin",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ghhhhughg638/codex-web-mobile.git"
+  },
+  "homepage": "https://github.com/ghhhhughg638/codex-web-mobile#readme",
+  "bugs": {
+    "url": "https://github.com/ghhhhughg638/codex-web-mobile/issues"
+  },
+  "keywords": [
+    "codex",
+    "openai",
+    "web-ui",
+    "remote",
+    "cli"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "bin": {
+    "codex-web-mobile": "dist-cli/index.js"
+  },
+  "files": [
+    "dist/",
+    "dist-cli/"
+  ],
+  "scripts": {
+    "dev": "vite",
+    "build:frontend": "vue-tsc --noEmit && vite build",
+    "build:cli": "tsup",
+    "build": "npm run build:frontend && npm run build:cli",
+    "ui:check": "node scripts/ui-check.mjs",
+    "preview": "vite preview",
+    "prepublishOnly": "npm run build"
+  },
+  "dependencies": {
+    "@iarna/toml": "^3.0.0",
+    "commander": "^13.1.0",
+    "dompurify": "^3.4.16",
+    "express": "^5.1.0",
+    "marked": "^18.0.14",
+    "naive-ui": "^2.45.3"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.1.18",
+    "@types/express": "^5.0.0",
+    "@types/node": "^22.13.2",
+    "@vitejs/plugin-vue": "^5.2.1",
+    "tailwindcss": "^4.1.18",
+    "tsup": "^8.4.0",
+    "typescript": "^5.7.3",
+    "vite": "^6.1.0",
+    "vue": "^3.5.13",
+    "vue-router": "^4.6.4",
+    "vue-tsc": "^2.2.0",
+    "ws": "^8.18.0"
+  }
+}
