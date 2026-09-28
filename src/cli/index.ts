@@ -10,11 +10,18 @@ const program = new Command()
   .option('--host <host>', 'host to listen on', '127.0.0.1')
   .option('--password <pass>', 'set a specific password')
   .option('--no-password', 'disable password protection')
+  .option('--allow-insecure', 'allow passwordless listening on a non-local host')
   .parse()
 
-const opts = program.opts<{ port: string; host: string; password: string | boolean }>()
+const opts = program.opts<{ port: string; host: string; password: string | boolean; allowInsecure?: boolean }>()
 const port = parseInt(opts.port, 10)
 const host = opts.host || '127.0.0.1'
+
+const isLocalHost = host === '127.0.0.1' || host === '::1' || host === 'localhost'
+if (opts.password === false && !isLocalHost && opts.allowInsecure !== true) {
+  console.error('Passwordless listening is restricted to localhost. Use --password or explicitly add --allow-insecure.')
+  process.exit(1)
+}
 
 let password: string | undefined
 if (opts.password === false) {
@@ -47,6 +54,15 @@ function announce(): void {
 }
 
 function listen(): void {
+  server.once('error', (error: NodeJS.ErrnoException) => {
+    appInstance.dispose()
+    if (error.code === 'EADDRINUSE') {
+      console.error(`Port ${String(currentPort)} is already in use. Choose another port with --port <port>.`)
+    } else {
+      console.error(`Failed to listen on ${currentHost}:${String(currentPort)}: ${error.message}`)
+    }
+    process.exitCode = 1
+  })
   server.listen(currentPort, currentHost, announce)
 }
 

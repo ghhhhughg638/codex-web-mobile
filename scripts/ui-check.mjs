@@ -38,7 +38,7 @@ try {
   })
 
   const evaluate = async (expression) => {
-    const response = await command('Runtime.evaluate', { returnByValue: true, expression })
+    const response = await command('Runtime.evaluate', { returnByValue: true, awaitPromise: true, expression })
     return response.result?.value
   }
 
@@ -62,7 +62,7 @@ try {
   await command('Page.enable')
   await command('Runtime.enable')
   await command('Page.addScriptToEvaluateOnNewDocument', {
-    source: `window.__codexTestStreams = []; window.EventSource = class { constructor(url) { this.url = url; window.__codexTestStreams.push(this); } close() {} };`,
+    source: `window.__codexTestStreams = []; window.__codexRpcCalls = []; window.__codexRequestReplies = []; window.__codexTestErrors = []; window.__codexSyntheticConversation = false; window.addEventListener('error', (event) => { const message = String(event.error || event.message || 'error'); if (!message.includes('ResizeObserver loop')) window.__codexTestErrors.push(message); }); const originalFetch = window.fetch.bind(window); window.fetch = async (input, init = {}) => { const rawUrl = typeof input === 'string' ? input : input.url; const url = new URL(rawUrl, location.href).pathname; if (url === '/codex-api/server-requests/respond') { const body = JSON.parse(init.body || '{}'); window.__codexRequestReplies.push(body); return new Response(JSON.stringify({ ok: true }), { status: 200, headers: { 'content-type': 'application/json' } }); } if (url === '/codex-api/rpc') { const body = JSON.parse(init.body || '{}'); window.__codexRpcCalls.push(body); if (body.method === 'turn/interrupt') return new Response(JSON.stringify({ result: {} }), { status: 200, headers: { 'content-type': 'application/json' } }); if (body.method === 'thread/read' && window.__codexSyntheticConversation) { const threadId = body.params?.threadId || 'ui-test-thread'; const wav = 'UklGRiQAAABXQVZFZm10IBAAAAABAAEAgD4AAAB9AAACABAAZGF0YQAAAAA='; const png = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+j2ioAAAAASUVORK5CYII='; const assistantText = '<audio src="data:audio/wav;base64,' + wav + '"></audio>\\n\\n' + String.fromCharCode(96).repeat(3) + 'html\\n<!doctype html><html><body><h1>HTML test</h1></body></html>\\n' + String.fromCharCode(96).repeat(3); return new Response(JSON.stringify({ result: { thread: { id: threadId, preview: 'media test', modelProvider: 'test', createdAt: 1, updatedAt: 1, path: null, cwd: '/', cliVersion: 'test', source: { kind: 'appServer' }, gitInfo: null, turns: [{ id: 'media-turn', status: 'completed', error: null, items: [{ type: 'userMessage', id: 'media-user', content: [{ type: 'text', text: 'Image test' }, { type: 'image', url: png }] }, { type: 'agentMessage', id: 'media-assistant', text: assistantText }] }] } } }), { status: 200, headers: { 'content-type': 'application/json' } }); } } return originalFetch(input, init); }; window.open = (url) => { window.__codexOpenedUrls = [...(window.__codexOpenedUrls || []), String(url)]; return null; }; window.EventSource = class { constructor(url) { this.url = url; window.__codexTestStreams.push(this); } close() {} };`,
   })
   const checks = []
   for (const viewport of [{ name: 'small-mobile', width: 360, height: 740 }, { name: 'mobile', width: 390, height: 844 }, { name: 'desktop', width: 1280, height: 900 }]) {
@@ -134,6 +134,10 @@ try {
         await chooseMenuOption('.appearance-menu .app-menu-trigger', 'Codex 清爽')
       }
     }
+    await evaluate("document.querySelectorAll('.nav-item')[4]?.click()")
+    await sleep(350)
+    if (!await evaluate("Boolean(document.querySelector('.file-manager-stage'))")) throw new Error(`${viewport.name} file manager view did not render`)
+    await capture(`${viewport.name}-file-manager`, `${viewport.name} file manager`)
     await evaluate("document.querySelectorAll('.nav-item')[0]?.click()")
     await sleep(180)
     const fileButton = await evaluate("(() => { const button = document.querySelector('.thread-composer-files'); if (button && !button.disabled) button.click(); return { found: Boolean(button), disabled: button?.disabled, chat: Boolean(document.querySelector('.chat-stage')) }; })()")
@@ -143,12 +147,29 @@ try {
     await capture(`${viewport.name}-files`, `${viewport.name} file picker`)
     await evaluate("document.querySelector('.file-picker .icon-button')?.click()")
     await sleep(100)
-    const hasThread = await evaluate("document.querySelectorAll('.thread-item').length > 0")
+    const hasThread = await evaluate("document.querySelectorAll('.thread-row').length > 0")
     if (hasThread) {
-      await evaluate("document.querySelector('.thread-item')?.click()")
+      await evaluate("window.__codexSyntheticConversation = true")
+      await evaluate("document.querySelector('.thread-row .thread-main-button')?.click()")
       await sleep(700)
       await capture(`${viewport.name}-thread`, `${viewport.name} conversation`)
       const threadId = await evaluate("location.pathname.split('/').pop()")
+      await command('Page.addScriptToEvaluateOnNewDocument', { source: 'window.__codexSyntheticConversation = true;' })
+      await command('Page.navigate', { url: `http://127.0.0.1:${appPort}/thread/${threadId}` })
+      await sleep(700)
+      let media = { image: false, audio: false, html: false }
+      for (let attempt = 0; attempt < 20; attempt += 1) {
+        media = await evaluate("({ image: Boolean(document.querySelector('.message-image-preview')), audio: Boolean(document.querySelector('.message-audio')), html: Boolean(document.querySelector('.message-html-action')) })")
+        if (media.image && media.audio && media.html) break
+        await sleep(120)
+      }
+      if (!media.image || !media.audio || !media.html) {
+        const debug = await evaluate("({ calls: window.__codexRpcCalls, errors: window.__codexTestErrors || [] })")
+        debug.probe = await evaluate("(async () => { window.__codexSyntheticConversation = true; const response = await fetch('/codex-api/rpc', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ method: 'thread/read', params: { threadId: location.pathname.split('/').pop(), includeTurns: true } }) }); const payload = await response.json(); return { status: response.status, itemCount: payload.result?.thread?.turns?.[0]?.items?.length || 0, text: payload.result?.thread?.turns?.[0]?.items?.[1]?.text || '' }; })()")
+        throw new Error(`${viewport.name} generated media did not render: ${JSON.stringify({ media, debug })}`)
+      }
+      await evaluate("document.querySelector('.message-html-action button')?.click()")
+      if (!await evaluate("Boolean(window.__codexOpenedUrls?.length)")) throw new Error(`${viewport.name} HTML result did not open in a new tab`)
       const turnId = `ui-check-${viewport.name}`
       let streamReady = false
       for (let attempt = 0; attempt < 30; attempt += 1) {
@@ -158,15 +179,28 @@ try {
       }
       if (!streamReady) throw new Error(`${viewport.name} notification stream was not ready`)
       await evaluate(`(() => { const stream = window.__codexTestStreams.at(-1); const startedAt = new Date(Date.now() - 3605000).toISOString(); window.__codexTestTurnStartedAt = startedAt; stream.onmessage({ data: JSON.stringify({ method: 'turn/started', params: { threadId: ${JSON.stringify(threadId)}, turn: { id: ${JSON.stringify(turnId)}, status: 'inProgress', startedAt, items: [] } }, atIso: new Date().toISOString() }) }); })()`)
+      await evaluate(`(() => { const stream = window.__codexTestStreams.at(-1); stream.onmessage({ data: JSON.stringify({ method: 'server/request', params: { id: 'ui-check-string-id', method: 'item/tool/requestUserInput', receivedAtIso: new Date().toISOString(), params: { threadId: ${JSON.stringify(threadId)}, turnId: ${JSON.stringify(turnId)}, itemId: 'question-item', questions: [{ id: 'confirm', header: 'Confirm', question: 'Continue?', isOther: false, isSecret: false, options: [{ label: 'Yes', description: 'Continue' }] }] } }, atIso: new Date().toISOString() }) }); })()`)
+      await sleep(100)
+      if (!await evaluate("Boolean(document.querySelector('.request-user-input'))")) throw new Error(`${viewport.name} string-id question did not render`)
+      await evaluate("document.querySelector('.request-user-input .request-button-primary')?.click()")
+      const answeredRequestId = await evaluate("window.__codexRequestReplies.at(-1)?.id")
+      if (answeredRequestId !== 'ui-check-string-id') throw new Error(`${viewport.name} string request ID was not preserved: ${answeredRequestId}`)
       await sleep(1250)
       const firstElapsed = await evaluate("document.querySelector('.live-overlay-elapsed')?.textContent || ''")
       if (!/\d+时\s*\d+分\s*\d+秒/u.test(firstElapsed)) throw new Error(`${viewport.name} active turn elapsed time did not render: ${firstElapsed}`)
       const activeControls = await evaluate("(() => ({ inputEnabled: !document.querySelector('.thread-composer-input')?.disabled, choices: document.querySelectorAll('.running-actions button').length }))()")
       if (!activeControls.inputEnabled || activeControls.choices !== 2) throw new Error(`${viewport.name} running composer controls are unavailable: ${JSON.stringify(activeControls)}`)
       await capture(`${viewport.name}-working`, `${viewport.name} active turn`)
+      await evaluate("document.querySelector('.activity-dock-trigger')?.click()")
+      const dockPosition = await evaluate("(() => { const panel = document.querySelector('.activity-panel'); return panel ? { right: getComputedStyle(panel).right, left: panel.getBoundingClientRect().left, viewportWidth: innerWidth } : null })()")
+      if (!dockPosition || dockPosition.left < 0 || dockPosition.left > dockPosition.viewportWidth) throw new Error(`${viewport.name} activity drawer is not docked on the right: ${JSON.stringify(dockPosition)}`)
       await sleep(1150)
       const secondElapsed = await evaluate("document.querySelector('.live-overlay-elapsed')?.textContent || ''")
       if (!secondElapsed || secondElapsed === firstElapsed) throw new Error(`${viewport.name} active turn clock did not advance: ${firstElapsed} -> ${secondElapsed}`)
+      await evaluate("document.querySelector('.thread-composer-stop')?.click()")
+      await sleep(200)
+      const interruptCall = await evaluate("window.__codexRpcCalls.findLast((call) => call.method === 'turn/interrupt') || null")
+      if (interruptCall?.params?.turnId !== turnId) throw new Error(`${viewport.name} stop did not send the active turn ID: ${JSON.stringify(interruptCall)}`)
       await evaluate(`(() => { const stream = window.__codexTestStreams.at(-1); stream.onmessage({ data: JSON.stringify({ method: 'turn/completed', params: { threadId: ${JSON.stringify(threadId)}, turn: { id: ${JSON.stringify(turnId)}, status: 'interrupted', startedAt: window.__codexTestTurnStartedAt, completedAt: new Date().toISOString(), items: [] } }, atIso: new Date().toISOString() }) }); })()`)
       await sleep(180)
       if (await evaluate("Boolean(document.querySelector('.live-overlay-elapsed'))")) throw new Error(`${viewport.name} elapsed clock remained visible after completion`)

@@ -49,6 +49,7 @@ Options:
   --host <host>        host to listen on (default: "127.0.0.1")
   --password <pass>    set a specific password
   --no-password        disable password protection
+  --allow-insecure     allow passwordless listening on a non-local host
   -h, --help           display help for command
 ```
 
@@ -73,6 +74,8 @@ codex-web-mobile --no-password
 
 When started with password protection (default), the server prints the password to the console. Open the URL in your browser, enter the password, and you're in.
 
+Passwordless mode is limited to localhost. To deliberately expose an unauthenticated server on a network interface, add `--allow-insecure`.
+
 The Settings page edits `~/.codex/config.toml`, creates a backup before writes, validates TOML, and can restart the Codex app-server. API keys are hidden in the UI by default but are written to the config file when explicitly saved.
 
 The Skills page reads `~/.codex/skills`, supports local paths, GitHub repositories, npm packages, and archives, and injects selected `SKILL.md` files into new threads. Package scripts are not executed during installation.
@@ -86,6 +89,8 @@ Active turns show a live `(h m s elapsed)` clock beside their status. This clock
 Use `Files` in the composer to browse the Termux host directory, attach a file reference, or upload a file from the phone. Uploads are stored on the local host (20 MB maximum) and attached by local path. Image understanding depends on the configured model/provider.
 
 Run `npm run ui:check` to capture Chromium CDP screenshots at 360×740, 390×844 and 1280×900, switch locales, and smoke-test settings, skills, integrations, commands, the file picker and conversations. It simulates a turn to verify that the elapsed clock advances, stops on completion, and leaves the composer usable while active. Screenshots are saved under `~/.codex/web-mobile/screenshots/`.
+
+Run `npm run test:all` for the build, static checks, isolated core checks, fake app-server integration checks and Chromium end-to-end checks. Run `npm run test:acceptance` for the real read-only Codex project inspection; it consumes model usage and never intentionally edits the repository.
 
 ## Contributing
 

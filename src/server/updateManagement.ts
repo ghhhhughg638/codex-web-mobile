@@ -18,7 +18,7 @@ function parseVersion(value: unknown): [number, number, number] | null {
   return match ? [Number(match[1]), Number(match[2]), Number(match[3])] : null
 }
 
-function isNewer(latest: string, current: string): boolean {
+export function isVersionNewer(latest: string, current: string): boolean {
   const left = parseVersion(latest)
   const right = parseVersion(current)
   if (!left || !right) return latest !== current
@@ -53,7 +53,7 @@ export async function checkForUpdate(): Promise<UpdateCheckResult> {
   return {
     currentVersion,
     latestVersion,
-    updateAvailable: isNewer(latestVersion, currentVersion),
+    updateAvailable: isVersionNewer(latestVersion, currentVersion),
     repository,
     releaseUrl: `https://github.com/${repository}/releases`,
   }

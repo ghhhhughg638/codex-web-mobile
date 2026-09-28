@@ -1,5 +1,5 @@
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
-import { mkdtemp, readFile } from 'node:fs/promises'
+import { mkdtemp, readFile, rm } from 'node:fs/promises'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -129,6 +129,17 @@ class AppServerProcess {
     proc.stderr.setEncoding('utf8')
     proc.stderr.on('data', () => {
       // Keep stderr silent in dev middleware; JSON-RPC errors are forwarded via responses.
+    })
+
+    proc.on('error', (error) => {
+      const failure = new Error(`Failed to start codex app-server: ${error.message}`)
+      for (const request of this.pending.values()) request.reject(failure)
+      this.pending.clear()
+      this.pendingServerRequests.clear()
+      this.process = null
+      this.initialized = false
+      this.initializationPromise = null
+      this.readBuffer = ''
     })
 
     proc.on('exit', () => {
@@ -467,15 +478,17 @@ class MethodCatalog {
     }
 
     const outDir = await mkdtemp(join(tmpdir(), 'codex-web-local-schema-'))
-    await this.runGenerateSchemaCommand(outDir)
-
-    const clientRequestPath = join(outDir, 'ClientRequest.json')
-    const raw = await readFile(clientRequestPath, 'utf8')
-    const parsed = JSON.parse(raw) as unknown
-    const methods = this.extractMethodsFromClientRequest(parsed)
-
-    this.methodCache = methods
-    return methods
+    try {
+      await this.runGenerateSchemaCommand(outDir)
+      const clientRequestPath = join(outDir, 'ClientRequest.json')
+      const raw = await readFile(clientRequestPath, 'utf8')
+      const parsed = JSON.parse(raw) as unknown
+      const methods = this.extractMethodsFromClientRequest(parsed)
+      this.methodCache = methods
+      return methods
+    } finally {
+      await rm(outDir, { recursive: true, force: true })
+    }
   }
 
   async listNotificationMethods(): Promise<string[]> {
@@ -484,15 +497,17 @@ class MethodCatalog {
     }
 
     const outDir = await mkdtemp(join(tmpdir(), 'codex-web-local-schema-'))
-    await this.runGenerateSchemaCommand(outDir)
-
-    const serverNotificationPath = join(outDir, 'ServerNotification.json')
-    const raw = await readFile(serverNotificationPath, 'utf8')
-    const parsed = JSON.parse(raw) as unknown
-    const methods = this.extractMethodsFromServerNotification(parsed)
-
-    this.notificationCache = methods
-    return methods
+    try {
+      await this.runGenerateSchemaCommand(outDir)
+      const serverNotificationPath = join(outDir, 'ServerNotification.json')
+      const raw = await readFile(serverNotificationPath, 'utf8')
+      const parsed = JSON.parse(raw) as unknown
+      const methods = this.extractMethodsFromServerNotification(parsed)
+      this.notificationCache = methods
+      return methods
+    } finally {
+      await rm(outDir, { recursive: true, force: true })
+    }
   }
 }
 
@@ -616,7 +631,7 @@ export function createCodexBridgeMiddleware(): CodexBridgeMiddleware {
           }
         }
 
-        req.on('close', close)
+        res.on('close', close)
         req.on('aborted', close)
         return
       }

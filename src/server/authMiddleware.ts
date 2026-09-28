@@ -72,9 +72,18 @@ export function createAuthMiddleware(password: string): RequestHandler {
     // Handle login POST
     if (req.method === 'POST' && req.path === '/auth/login') {
       let body = ''
+      let bodyTooLarge = false
       req.setEncoding('utf8')
-      req.on('data', (chunk: string) => { body += chunk })
+      req.on('data', (chunk: string) => {
+        if (bodyTooLarge) return
+        body += chunk
+        if (Buffer.byteLength(body, 'utf8') > 16 * 1024) {
+          bodyTooLarge = true
+          res.status(413).json({ error: 'Login request is too large' })
+        }
+      })
       req.on('end', () => {
+        if (bodyTooLarge) return
         try {
           const parsed = JSON.parse(body) as { password?: string }
           const provided = typeof parsed.password === 'string' ? parsed.password : ''
