@@ -88,7 +88,7 @@ export function subscribeCodexNotifications(onNotification: (value: RpcNotificat
 export type { RpcNotification }
 
 export async function replyToServerRequest(
-  id: number,
+  id: string | number,
   payload: { result?: unknown; error?: { code?: number; message: string } },
 ): Promise<void> {
   await respondServerRequest({

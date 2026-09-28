@@ -19,78 +19,6 @@
 
     <ul v-else ref="conversationListRef" class="conversation-list" @scroll="onConversationScroll">
       <li
-        v-for="request in pendingRequests"
-        :key="`server-request:${request.id}`"
-        class="conversation-item conversation-item-request"
-      >
-        <div class="message-row">
-          <div class="message-stack">
-            <article class="request-card">
-              <p class="request-title">{{ request.method }}</p>
-              <p class="request-meta">{{ t('request.number') }} #{{ request.id }} · {{ formatIsoTime(request.receivedAtIso) }}</p>
-
-              <p v-if="readRequestReason(request)" class="request-reason">{{ readRequestReason(request) }}</p>
-
-              <section v-if="request.method === 'item/commandExecution/requestApproval'" class="request-actions">
-                <button type="button" class="request-button request-button-primary" @click="onRespondApproval(request.id, 'accept')">{{ t('request.accept') }}</button>
-                <button type="button" class="request-button" @click="onRespondApproval(request.id, 'acceptForSession')">{{ t('request.acceptSession') }}</button>
-                <button type="button" class="request-button" @click="onRespondApproval(request.id, 'decline')">{{ t('request.decline') }}</button>
-                <button type="button" class="request-button" @click="onRespondApproval(request.id, 'cancel')">{{ t('request.cancel') }}</button>
-              </section>
-
-              <section v-else-if="request.method === 'item/fileChange/requestApproval'" class="request-actions">
-                <button type="button" class="request-button request-button-primary" @click="onRespondApproval(request.id, 'accept')">{{ t('request.accept') }}</button>
-                <button type="button" class="request-button" @click="onRespondApproval(request.id, 'acceptForSession')">{{ t('request.acceptSession') }}</button>
-                <button type="button" class="request-button" @click="onRespondApproval(request.id, 'decline')">{{ t('request.decline') }}</button>
-                <button type="button" class="request-button" @click="onRespondApproval(request.id, 'cancel')">{{ t('request.cancel') }}</button>
-              </section>
-
-              <section v-else-if="request.method === 'item/tool/requestUserInput'" class="request-user-input">
-                <div
-                  v-for="question in readToolQuestions(request)"
-                  :key="`${request.id}:${question.id}`"
-                  class="request-question"
-                >
-                  <p class="request-question-title">{{ question.header || question.question }}</p>
-                  <p v-if="question.header && question.question" class="request-question-text">{{ question.question }}</p>
-                  <AppSelect
-                    class-name="request-select-control"
-                    :model-value="readQuestionAnswer(request.id, question.id, question.options[0] || '')"
-                    :options="question.options.map((option) => ({ value: option, label: option }))"
-                    :aria-label="question.header || question.question"
-                    size="small"
-                    @update:model-value="onQuestionAnswerValue(request.id, question.id, $event)"
-                  />
-                  <input
-                    v-if="question.isOther"
-                    class="request-input"
-                    type="text"
-                    :value="readQuestionOtherAnswer(request.id, question.id)"
-                    :placeholder="t('request.other')"
-                    @input="onQuestionOtherAnswerInput(request.id, question.id, $event)"
-                  />
-                </div>
-
-                <button type="button" class="request-button request-button-primary" @click="onRespondToolRequestUserInput(request)">
-                  {{ t('request.submit') }}
-                </button>
-              </section>
-
-              <section v-else-if="request.method === 'item/tool/call'" class="request-actions">
-                <button type="button" class="request-button request-button-primary" @click="onRespondToolCallFailure(request.id)">{{ t('request.failTool') }}</button>
-                <button type="button" class="request-button" @click="onRespondToolCallSuccess(request.id)">{{ t('request.emptySuccess') }}</button>
-              </section>
-
-              <section v-else class="request-actions">
-                <button type="button" class="request-button request-button-primary" @click="onRespondEmptyResult(request.id)">{{ t('request.returnEmpty') }}</button>
-                <button type="button" class="request-button" @click="onRejectUnknownRequest(request.id)">{{ t('request.reject') }}</button>
-              </section>
-            </article>
-          </div>
-        </div>
-      </li>
-
-      <li
         v-for="message in messages"
         :key="message.id"
         class="conversation-item"
@@ -145,9 +73,9 @@
                     <span v-if="isLongContentExpanded(message.id)">{{ t('conversation.collapsePasted') }}</span>
                     <span v-else>[{{ t('conversation.pastedContent') }} {{ messageCharacterCount(message.text) }} {{ t('conversation.chars') }}]</span>
                   </button>
-                  <div v-if="isLongContentExpanded(message.id)" class="message-markdown" v-html="renderMarkdown(message.text)" @click="onMarkdownClick" />
+                  <div v-if="isLongContentExpanded(message.id)" class="message-markdown" v-html="renderMarkdown(message.text, displayMedia(message))" @click="onMarkdownClick" />
                 </template>
-                <div v-else class="message-markdown" v-html="renderMarkdown(message.text)" @click="onMarkdownClick" />
+                <div v-else class="message-markdown" v-html="renderMarkdown(message.text, displayMedia(message))" @click="onMarkdownClick" />
               </article>
               <button v-if="message.text.length > 0 && message.role === 'user'" class="message-action-button message-edit-button" type="button" :aria-label="t('message.editResend')" :title="t('message.editResend')" @click="emit('editMessage', { text: message.text, attachments: message.attachments ?? [] })">
                 <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20h9" /><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L8 18l-4 1 1-4Z" /></svg>
@@ -156,6 +84,79 @@
           </div>
         </div>
       </li>
+
+      <li
+        v-for="request in pendingRequests"
+        :key="`server-request:${String(request.id)}`"
+        class="conversation-item conversation-item-request"
+      >
+        <div class="message-row">
+          <div class="message-stack">
+            <article class="request-card">
+              <p class="request-title">{{ request.method }}</p>
+              <p class="request-meta">{{ t('request.number') }} #{{ request.id }} · {{ formatIsoTime(request.receivedAtIso) }}</p>
+
+              <p v-if="readRequestReason(request)" class="request-reason">{{ readRequestReason(request) }}</p>
+
+              <section v-if="request.method === 'item/commandExecution/requestApproval'" class="request-actions">
+                <button type="button" class="request-button request-button-primary" @click="onRespondApproval(request.id, 'accept')">{{ t('request.accept') }}</button>
+                <button type="button" class="request-button" @click="onRespondApproval(request.id, 'acceptForSession')">{{ t('request.acceptSession') }}</button>
+                <button type="button" class="request-button" @click="onRespondApproval(request.id, 'decline')">{{ t('request.decline') }}</button>
+                <button type="button" class="request-button" @click="onRespondApproval(request.id, 'cancel')">{{ t('request.cancel') }}</button>
+              </section>
+
+              <section v-else-if="request.method === 'item/fileChange/requestApproval'" class="request-actions">
+                <button type="button" class="request-button request-button-primary" @click="onRespondApproval(request.id, 'accept')">{{ t('request.accept') }}</button>
+                <button type="button" class="request-button" @click="onRespondApproval(request.id, 'acceptForSession')">{{ t('request.acceptSession') }}</button>
+                <button type="button" class="request-button" @click="onRespondApproval(request.id, 'decline')">{{ t('request.decline') }}</button>
+                <button type="button" class="request-button" @click="onRespondApproval(request.id, 'cancel')">{{ t('request.cancel') }}</button>
+              </section>
+
+              <section v-else-if="request.method === 'item/tool/requestUserInput'" class="request-user-input">
+                <div
+                  v-for="question in readToolQuestions(request)"
+                  :key="`${String(request.id)}:${question.id}`"
+                  class="request-question"
+                >
+                  <p class="request-question-title">{{ question.header || question.question }}</p>
+                  <p v-if="question.header && question.question" class="request-question-text">{{ question.question }}</p>
+                  <AppSelect
+                    class-name="request-select-control"
+                    :model-value="readQuestionAnswer(request.id, question.id, question.options[0] || '')"
+                    :options="question.options.map((option) => ({ value: option, label: option }))"
+                    :aria-label="question.header || question.question"
+                    size="small"
+                    @update:model-value="onQuestionAnswerValue(request.id, question.id, $event)"
+                  />
+                  <input
+                    v-if="question.isOther"
+                    class="request-input"
+                    type="text"
+                    :value="readQuestionOtherAnswer(request.id, question.id)"
+                    :placeholder="t('request.other')"
+                    @input="onQuestionOtherAnswerInput(request.id, question.id, $event)"
+                  />
+                </div>
+
+                <button type="button" class="request-button request-button-primary" @click="onRespondToolRequestUserInput(request)">
+                  {{ t('request.submit') }}
+                </button>
+              </section>
+
+              <section v-else-if="request.method === 'item/tool/call'" class="request-actions">
+                <button type="button" class="request-button request-button-primary" @click="onRespondToolCallFailure(request.id)">{{ t('request.failTool') }}</button>
+                <button type="button" class="request-button" @click="onRespondToolCallSuccess(request.id)">{{ t('request.emptySuccess') }}</button>
+              </section>
+
+              <section v-else class="request-actions">
+                <button type="button" class="request-button request-button-primary" @click="onRespondEmptyResult(request.id)">{{ t('request.returnEmpty') }}</button>
+                <button type="button" class="request-button" @click="onRejectUnknownRequest(request.id)">{{ t('request.reject') }}</button>
+              </section>
+            </article>
+          </div>
+        </div>
+      </li>
+
       <li v-if="liveOverlay" class="conversation-item conversation-item-overlay">
         <div class="message-row">
           <div class="message-stack">
@@ -209,9 +210,12 @@ const props = defineProps<{
 const { t } = useLocale()
 marked.setOptions({ gfm: true, breaks: true })
 
-function renderMarkdown(value: string): string {
+function renderMarkdown(value: string, visibleMedia: UiMediaResource[] = []): string {
   const safeHtml = DOMPurify.sanitize(marked.parse(value, { async: false }))
   const documentFragment = new DOMParser().parseFromString(safeHtml, 'text/html')
+  const visibleImageUrls = new Set(
+    visibleMedia.filter((resource) => resource.kind === 'image').map((resource) => resource.url),
+  )
   for (const pre of documentFragment.querySelectorAll('pre')) {
     const button = documentFragment.createElement('button')
     button.type = 'button'
@@ -240,6 +244,21 @@ function renderMarkdown(value: string): string {
     button.append(icon, label)
     pre.prepend(button)
   }
+  for (const image of documentFragment.querySelectorAll<HTMLImageElement>('img')) {
+    const source = image.getAttribute('src')?.trim() || ''
+    const resource = source ? mediaResourceForReference(source) : null
+    if (resource?.kind === 'image' && visibleImageUrls.has(resource.url)) {
+      image.remove()
+      continue
+    }
+    if (resource?.kind === 'image') {
+      image.setAttribute('src', resource.url)
+    }
+    if (!source || (isLocalMediaReference(source) && !resource)) {
+      image.remove()
+      continue
+    }
+  }
   for (const anchor of documentFragment.querySelectorAll<HTMLAnchorElement>('a[href]')) {
     const href = anchor.getAttribute('href') || ''
     anchor.target = '_blank'
@@ -254,7 +273,7 @@ function renderMarkdown(value: string): string {
 
 const emit = defineEmits<{
   updateScrollState: [payload: { threadId: string; state: ThreadScrollState }]
-  respondServerRequest: [payload: { id: number; result?: unknown; error?: { code?: number; message: string } }]
+  respondServerRequest: [payload: { id: string | number; result?: unknown; error?: { code?: number; message: string } }]
   editMessage: [payload: { text: string; attachments: UiFileAttachment[] }]
 }>()
 
@@ -313,8 +332,11 @@ function mediaResourceForReference(reference: string): UiMediaResource | null {
 }
 
 function displayMedia(message: UiMessage): UiMediaResource[] {
-  if (message.media && message.media.length > 0) return message.media
-  return (message.images || []).map((url) => ({ kind: 'image' as const, url, label: t('request.previewImage') }))
+  const resources = [
+    ...(message.media || []),
+    ...(message.images || []).map((url) => ({ kind: 'image' as const, url, label: t('request.previewImage') })),
+  ]
+  return resources.filter((resource, index) => resources.findIndex((candidate) => `${candidate.kind}:${candidate.url}` === `${resource.kind}:${resource.url}`) === index)
 }
 
 function extractHtmlDocument(value: string): string {
@@ -332,7 +354,9 @@ function openHtmlDocument(value: string): void {
 
 function onMediaError(event: Event): void {
   const element = event.currentTarget
-  if (element instanceof HTMLElement) element.closest('.message-media-item')?.classList.add('is-broken')
+  if (element instanceof HTMLElement) {
+    element.closest('.message-media-item')?.remove()
+  }
 }
 
 function messageCharacterCount(value: string): number {
@@ -543,7 +567,7 @@ function readRequestReason(request: UiServerRequest): string {
   return typeof reason === 'string' ? reason.trim() : ''
 }
 
-function toolQuestionKey(requestId: number, questionId: string): string {
+function toolQuestionKey(requestId: string | number, questionId: string): string {
   return `${String(requestId)}:${questionId}`
 }
 
@@ -577,19 +601,19 @@ function readToolQuestions(request: UiServerRequest): ParsedToolQuestion[] {
   return parsed
 }
 
-function readQuestionAnswer(requestId: number, questionId: string, fallback: string): string {
+function readQuestionAnswer(requestId: string | number, questionId: string, fallback: string): string {
   const key = toolQuestionKey(requestId, questionId)
   const saved = toolQuestionAnswers.value[key]
   if (typeof saved === 'string' && saved.length > 0) return saved
   return fallback
 }
 
-function readQuestionOtherAnswer(requestId: number, questionId: string): string {
+function readQuestionOtherAnswer(requestId: string | number, questionId: string): string {
   const key = toolQuestionKey(requestId, questionId)
   return toolQuestionOtherAnswers.value[key] ?? ''
 }
 
-function onQuestionAnswerValue(requestId: number, questionId: string, value: string): void {
+function onQuestionAnswerValue(requestId: string | number, questionId: string, value: string): void {
   const key = toolQuestionKey(requestId, questionId)
   toolQuestionAnswers.value = {
     ...toolQuestionAnswers.value,
@@ -597,7 +621,7 @@ function onQuestionAnswerValue(requestId: number, questionId: string, value: str
   }
 }
 
-function onQuestionOtherAnswerInput(requestId: number, questionId: string, event: Event): void {
+function onQuestionOtherAnswerInput(requestId: string | number, questionId: string, event: Event): void {
   const target = event.target
   if (!(target instanceof HTMLInputElement)) return
   const key = toolQuestionKey(requestId, questionId)
@@ -607,7 +631,7 @@ function onQuestionOtherAnswerInput(requestId: number, questionId: string, event
   }
 }
 
-function onRespondApproval(requestId: number, decision: 'accept' | 'acceptForSession' | 'decline' | 'cancel'): void {
+function onRespondApproval(requestId: string | number, decision: 'accept' | 'acceptForSession' | 'decline' | 'cancel'): void {
   emit('respondServerRequest', {
     id: requestId,
     result: { decision },
@@ -631,7 +655,7 @@ function onRespondToolRequestUserInput(request: UiServerRequest): void {
   })
 }
 
-function onRespondToolCallFailure(requestId: number): void {
+function onRespondToolCallFailure(requestId: string | number): void {
   emit('respondServerRequest', {
     id: requestId,
     result: {
@@ -646,7 +670,7 @@ function onRespondToolCallFailure(requestId: number): void {
   })
 }
 
-function onRespondToolCallSuccess(requestId: number): void {
+function onRespondToolCallSuccess(requestId: string | number): void {
   emit('respondServerRequest', {
     id: requestId,
     result: {
@@ -656,14 +680,14 @@ function onRespondToolCallSuccess(requestId: number): void {
   })
 }
 
-function onRespondEmptyResult(requestId: number): void {
+function onRespondEmptyResult(requestId: string | number): void {
   emit('respondServerRequest', {
     id: requestId,
     result: {},
   })
 }
 
-function onRejectUnknownRequest(requestId: number): void {
+function onRejectUnknownRequest(requestId: string | number): void {
   emit('respondServerRequest', {
     id: requestId,
     error: {
@@ -794,6 +818,15 @@ watch(
     if (props.isLoading) return
     await scheduleScrollRestore()
   },
+)
+
+watch(
+  () => props.pendingRequests,
+  async () => {
+    if (props.isLoading) return
+    await scheduleScrollRestore()
+  },
+  { deep: true },
 )
 
 watch(

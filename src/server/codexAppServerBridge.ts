@@ -12,8 +12,10 @@ type JsonRpcCall = {
   params?: unknown
 }
 
+type JsonRpcId = number | string
+
 type JsonRpcResponse = {
-  id?: number
+  id?: JsonRpcId | null
   result?: unknown
   error?: {
     code: number
@@ -37,7 +39,7 @@ type ServerRequestReply = {
 }
 
 type PendingServerRequest = {
-  id: number
+  id: JsonRpcId
   method: string
   params: unknown
   receivedAtIso: string
@@ -98,7 +100,7 @@ class AppServerProcess {
   private initializationPromise: Promise<void> | null = null
   private readonly pending = new Map<number, { resolve: (value: unknown) => void; reject: (reason?: unknown) => void }>()
   private readonly notificationListeners = new Set<(value: { method: string; params: unknown }) => void>()
-  private readonly pendingServerRequests = new Map<number, PendingServerRequest>()
+  private readonly pendingServerRequests = new Map<JsonRpcId, PendingServerRequest>()
 
   private start(): void {
     if (this.process) return
@@ -160,6 +162,11 @@ class AppServerProcess {
       return
     }
 
+    if (typeof message.method === 'string' && message.id !== undefined && message.id !== null) {
+      this.handleServerRequest(message.id, message.method, message.params ?? null)
+      return
+    }
+
     if (typeof message.id === 'number' && this.pending.has(message.id)) {
       const pendingRequest = this.pending.get(message.id)
       this.pending.delete(message.id)
@@ -174,17 +181,12 @@ class AppServerProcess {
       return
     }
 
-    if (typeof message.method === 'string' && typeof message.id !== 'number') {
+    if (typeof message.method === 'string') {
       this.emitNotification({
         method: message.method,
         params: message.params ?? null,
       })
       return
-    }
-
-    // Handle server-initiated JSON-RPC requests (approvals, dynamic tool calls, etc.).
-    if (typeof message.id === 'number' && typeof message.method === 'string') {
-      this.handleServerRequest(message.id, message.method, message.params ?? null)
     }
   }
 
@@ -194,7 +196,7 @@ class AppServerProcess {
     }
   }
 
-  private sendServerRequestReply(requestId: number, reply: ServerRequestReply): void {
+  private sendServerRequestReply(requestId: JsonRpcId, reply: ServerRequestReply): void {
     if (reply.error) {
       this.sendLine({
         jsonrpc: '2.0',
@@ -211,7 +213,7 @@ class AppServerProcess {
     })
   }
 
-  private resolvePendingServerRequest(requestId: number, reply: ServerRequestReply): void {
+  private resolvePendingServerRequest(requestId: JsonRpcId, reply: ServerRequestReply): void {
     const pendingRequest = this.pendingServerRequests.get(requestId)
     if (!pendingRequest) {
       throw new Error(`No pending server request found for id ${String(requestId)}`)
@@ -220,10 +222,12 @@ class AppServerProcess {
 
     this.sendServerRequestReply(requestId, reply)
     const requestParams = asRecord(pendingRequest.params)
-    const threadId =
-      typeof requestParams?.threadId === 'string' && requestParams.threadId.length > 0
-        ? requestParams.threadId
-        : ''
+    const threadId = [
+      requestParams?.threadId,
+      requestParams?.thread_id,
+      requestParams?.conversationId,
+      requestParams?.conversation_id,
+    ].find((value): value is string => typeof value === 'string' && value.length > 0) ?? ''
     this.emitNotification({
       method: 'server/request/resolved',
       params: {
@@ -236,7 +240,7 @@ class AppServerProcess {
     })
   }
 
-  private handleServerRequest(requestId: number, method: string, params: unknown): void {
+  private handleServerRequest(requestId: JsonRpcId, method: string, params: unknown): void {
     const pendingRequest: PendingServerRequest = {
       id: requestId,
       method,
@@ -315,8 +319,10 @@ class AppServerProcess {
     }
 
     const id = body.id
-    if (typeof id !== 'number' || !Number.isInteger(id)) {
-      throw new Error('Invalid response payload: "id" must be an integer')
+    const validNumericId = typeof id === 'number' && Number.isInteger(id)
+    const validStringId = typeof id === 'string' && id.trim().length > 0
+    if (!validNumericId && !validStringId) {
+      throw new Error('Invalid response payload: "id" must be a non-empty string or integer')
     }
 
     const rawError = asRecord(body.error)

@@ -125,7 +125,6 @@ function parseUserMessageContent(
     }
     if (block.type === 'localImage' && typeof block.path === 'string' && block.path.trim()) {
       const path = block.path.trim()
-      images.push(`/api/files/preview?path=${encodeURIComponent(path)}`)
       media.push({ kind: 'image', url: `/api/files/preview?path=${encodeURIComponent(path)}`, label: path.split('/').filter(Boolean).at(-1) || path, path })
       attachments.push({ type: 'localImage', path, name: path.split('/').filter(Boolean).at(-1) || path })
     }

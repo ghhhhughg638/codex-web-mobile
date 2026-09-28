@@ -1065,6 +1065,12 @@ export function useDesktopState() {
     return typeof value === 'number' && Number.isFinite(value) ? value : null
   }
 
+  function readServerRequestId(value: unknown): string | number | null {
+    if (typeof value === 'number' && Number.isInteger(value)) return value
+    if (typeof value === 'string' && value.trim().length > 0) return value
+    return null
+  }
+
   function extractThreadIdFromNotification(notification: RpcNotification): string {
     const params = asRecord(notification.params)
     if (!params) return ''
@@ -1105,15 +1111,20 @@ export function useDesktopState() {
     const row = asRecord(params)
     if (!row) return null
 
-    const id = row.id
+    const id = readServerRequestId(row.id)
     const method = readString(row.method)
     const requestParams = row.params
-    if (typeof id !== 'number' || !Number.isInteger(id) || !method) {
+    if (id === null || !method) {
       return null
     }
 
     const requestParamRecord = asRecord(requestParams)
-    const threadId = readString(requestParamRecord?.threadId) || GLOBAL_SERVER_REQUEST_SCOPE
+    const threadId =
+      readString(requestParamRecord?.threadId) ||
+      readString(requestParamRecord?.thread_id) ||
+      readString(requestParamRecord?.conversationId) ||
+      readString(requestParamRecord?.conversation_id) ||
+      GLOBAL_SERVER_REQUEST_SCOPE
     const turnId = readString(requestParamRecord?.turnId)
     const itemId = readString(requestParamRecord?.itemId)
     const receivedAtIso = readString(row.receivedAtIso) || new Date().toISOString()
@@ -1132,7 +1143,7 @@ export function useDesktopState() {
   function upsertPendingServerRequest(request: UiServerRequest): void {
     const threadId = request.threadId || GLOBAL_SERVER_REQUEST_SCOPE
     const current = pendingServerRequestsByThreadId.value[threadId] ?? []
-    const index = current.findIndex((row) => row.id === request.id)
+    const index = current.findIndex((row) => String(row.id) === String(request.id))
     const nextRows = [...current]
     if (index >= 0) {
       nextRows.splice(index, 1, request)
@@ -1146,10 +1157,10 @@ export function useDesktopState() {
     }
   }
 
-  function removePendingServerRequestById(requestId: number): void {
+  function removePendingServerRequestById(requestId: string | number): void {
     const next: Record<string, UiServerRequest[]> = {}
     for (const [threadId, requests] of Object.entries(pendingServerRequestsByThreadId.value)) {
-      const filtered = requests.filter((request) => request.id !== requestId)
+      const filtered = requests.filter((request) => String(request.id) !== String(requestId))
       if (filtered.length > 0) {
         next[threadId] = filtered
       }
@@ -1179,11 +1190,11 @@ export function useDesktopState() {
 
     if (notification.method === 'server/request/resolved') {
       const row = asRecord(notification.params)
-      const id = row?.id
-      if (typeof id === 'number' && Number.isInteger(id)) {
+      const id = readServerRequestId(row?.id)
+      if (id !== null) {
         const request = Object.values(pendingServerRequestsByThreadId.value)
           .flat()
-          .find((pending) => pending.id === id)
+          .find((pending) => String(pending.id) === String(id))
         if (request) updateTurnEventStatus(request.threadId, `request:${id}`, 'completed', notification.atIso, 'activity.resolved')
         removePendingServerRequestById(id)
       }
